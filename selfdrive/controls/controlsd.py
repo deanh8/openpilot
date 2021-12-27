@@ -108,12 +108,12 @@ class Controls:
     self.VM = VehicleModel(self.CP)
 
     if self.CP.lateralTuning.which() == 'pid':
-      self.LaC = LatControlPID(self.CP)
+      self.LaC = LatControlPID(self.CP, self.CI)
     elif self.CP.lateralTuning.which() == 'indi':
       self.LaC = LatControlINDI(self.CP)
     elif self.CP.lateralTuning.which() == 'lqr':
       self.LaC = LatControlLQR(self.CP)
-
+    self.radar_failed = False
     self.state = State.disabled
     self.enabled = False
     self.active = False

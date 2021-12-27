@@ -1,3 +1,4 @@
+from math import degrees
 from selfdrive.controls.lib.pid import PIController
 from selfdrive.controls.lib.drive_helpers import get_steer_max
 from cereal import car
@@ -6,7 +7,7 @@ from selfdrive.kegman_conf import kegman_conf
 
 
 class LatControlPID():
-  def __init__(self, CP):
+  def __init__(self, CP, CI):
     self.kegman = kegman_conf(CP)
     self.deadzone = float(self.kegman.conf['deadzone'])
     self.pid = PIController((CP.lateralTuning.pid.kpBP, CP.lateralTuning.pid.kpV),
@@ -15,6 +16,7 @@ class LatControlPID():
                             sat_limit=CP.steerLimitTimer)
     self.angle_steers_des = 0.
     self.mpc_frame = 0
+    self.get_steer_feedforward = CI.get_steer_feedforward_function()
 
   def reset(self):
     self.pid.reset()
@@ -55,12 +57,9 @@ class LatControlPID():
       self.pid.neg_limit = -steers_max
       steer_feedforward = self.angle_steers_des   # feedforward desired angle
       if CP.steerControlType == car.CarParams.SteerControlType.torque:
-        # TODO: feedforward something based on path_plan.rateSteers
-        steer_feedforward -= path_plan.angleOffset   # subtract the offset, since it does not contribute to resistive torque
-        steer_feedforward *= CS.vEgo**2  # proportional to realigning tire momentum (~ lateral accel)
-      
-      deadzone = self.deadzone    
-        
+        angle_steers_des_no_offset = math.degrees(self.angle_steers_des)
+        steer_feedforward = self.get_steer_feedforward(angle_steers_des_no_offset, CS.vEgo)
+      deadzone = 0.0
       check_saturation = (CS.vEgo > 10) and not CS.steeringRateLimited and not CS.steeringPressed
       output_steer = self.pid.update(self.angle_steers_des, CS.steeringAngle, check_saturation=check_saturation, override=CS.steeringPressed,
                                      feedforward=steer_feedforward, speed=CS.vEgo, deadzone=deadzone)

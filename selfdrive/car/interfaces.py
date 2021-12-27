@@ -48,6 +48,16 @@ class CarInterfaceBase():
   def get_params(candidate, fingerprint=gen_empty_fingerprint(), has_relay=False, car_fw=None):
     raise NotImplementedError
 
+  @staticmethod
+  def get_steer_feedforward_default(desired_angle, v_ego):
+    # Proportional to realigning tire momentum: lateral acceleration.
+    # TODO: something with lateralPlan.curvatureRates
+    return desired_angle * (v_ego**2)
+
+  @classmethod
+  def get_steer_feedforward_function(cls):
+    return cls.get_steer_feedforward_default
+
   # returns a set of default params to avoid repetition in car specific params
   @staticmethod
   def get_std_params(candidate, fingerprint, has_relay):

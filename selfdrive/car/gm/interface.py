@@ -58,12 +58,26 @@ class CarInterface(CarInterfaceBase):
 
     return float(max(max_accel, a_target / FOLLOW_AGGRESSION)) * min(speedLimiter, accelLimiter)
 
+  # Determined by iteratively plotting and minimizing error for f(angle, speed) = steer.
+  @staticmethod
+  def get_steer_feedforward_volt(desired_angle, v_ego):
+    desired_angle *= 0.02904609
+    sigmoid = desired_angle / (1 + fabs(desired_angle))
+    return 0.10006696 * sigmoid * (v_ego + 3.12485927)
+
+  def get_steer_feedforward_function(self):
+    if self.CP.carFingerprint == CAR.VOLT:
+      return self.get_steer_feedforward_volt
+    else:
+      return CarInterfaceBase.get_steer_feedforward_default
+
   @staticmethod
   def get_params(candidate, fingerprint=gen_empty_fingerprint(), has_relay=False, car_fw=None):
     ret = CarInterfaceBase.get_std_params(candidate, fingerprint, has_relay)
     ret.carName = "gm"
     ret.safetyModel = car.CarParams.SafetyModel.gm
     ret.enableCruise = False  # stock cruise control is kept off
+    ret.radarTimeStep = 1/15  # GM radar runs at 15Hz instead of standard 20Hz
 
     # GM port is a community feature
     # TODO: make a port that uses a car harness and it only intercepts the camera
@@ -83,15 +97,37 @@ class CarInterface(CarInterfaceBase):
     ret.lateralTuning.pid.kf = 0.00004   # full torque for 20 deg at 80mph means 0.00007818594
     ret.steerRateCost = 0.7
     ret.steerActuatorDelay = 0.1  # Default delay, not measured yet
+    
+    # default values up front
+    ret.longitudinalTuning.kpBP = [5., 35.]
+    ret.longitudinalTuning.kpV = [2.4, 1.5]
+    ret.longitudinalTuning.kiBP = [0.]
+    ret.longitudinalTuning.kiV = [0.36]
+
+    ret.stoppingControl = True
+    ret.startAccel = 0.8
+
+    ret.steerLimitTimer = 0.4
 
     if candidate == CAR.VOLT:
       # supports stop and go, but initial engage must be above 18mph (which include conservatism)
       ret.minEnableSpeed = -1
       ret.mass = 1607. + STD_CARGO_KG
       ret.wheelbase = 2.69
-      ret.steerRatio = 16.75
+      ret.steerRatio = 17.7  # Stock 15.7, LiveParameters
+      tire_stiffness_factor = 0.469 # Stock Michelin Energy Saver A/S, LiveParameters
       ret.steerRatioRear = 0.
-      ret.centerToFront = ret.wheelbase * 0.4  # wild guess
+      ret.centerToFront = 0.45 * ret.wheelbase # from Volt Gen 1
+
+      ret.lateralTuning.pid.kpBP = [0., 40.]
+      ret.lateralTuning.pid.kpV = [0., 0.17]
+      ret.lateralTuning.pid.kiBP = [i * CV.MPH_TO_MS for i in [0., 15., 55., 80.]]
+      ret.lateralTuning.pid.kiV = [0., .02, .01, .002]
+      ret.lateralTuning.pid.kf = 1. # !!! ONLY for sigmoid feedforward !!!
+      ret.steerActuatorDelay = 0.2
+
+      # Only tuned to reduce oscillations. TODO.
+      ret.longitudinalTuning.kpV = [1.7, 1.3]
 
     elif candidate == CAR.MALIBU:
       # supports stop and go, but initial engage must be above 18mph (which include conservatism)
@@ -143,17 +179,6 @@ class CarInterface(CarInterfaceBase):
     # mass and CG position, so all cars will have approximately similar dyn behaviors
     ret.tireStiffnessFront, ret.tireStiffnessRear = scale_tire_stiffness(ret.mass, ret.wheelbase, ret.centerToFront,
                                                                          tire_stiffness_factor=tire_stiffness_factor)
-
-    ret.longitudinalTuning.kpBP = [5., 35.]
-    ret.longitudinalTuning.kpV = [2.4, 1.5]
-    ret.longitudinalTuning.kiBP = [0.]
-    ret.longitudinalTuning.kiV = [0.36]
-
-    ret.stoppingControl = True
-    ret.startAccel = 0.8
-
-    ret.steerLimitTimer = 0.4
-    ret.radarTimeStep = 0.0667  # GM radar runs at 15Hz instead of standard 20Hz
 
     return ret
 
